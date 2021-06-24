@@ -134,6 +134,13 @@ dmypy.json
 # pytype static type analyzer
 .pytype/
 
+# mac
+.DS_Store
+
+# PyCharm
+.idea/
+
 # pretrained models
 scgpt.tar.gz
 scgpt/
+saved_models/

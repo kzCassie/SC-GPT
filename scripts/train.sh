@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export CUDA_VISIBLE_DEVICES=0
-MODEL_SAVE_PATH=scgpt
+MODEL_SAVE_PATH=saved_models/baseline
 PRE_TRINED_MODEL_PATH=scgpt/
 #gpt2, gpt2-meidum
 EPOCH=5
