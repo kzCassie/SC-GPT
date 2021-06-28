@@ -138,7 +138,7 @@ dmypy.json
 .DS_Store
 
 # PyCharm
-.idea/
+#.idea/
 
 # pretrained models
 scgpt.tar.gz
@@ -146,4 +146,4 @@ scgpt/
 baseline/
 baseline*/
 cloudflared*
-runs/
+#runs/
