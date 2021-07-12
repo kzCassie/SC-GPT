@@ -10,7 +10,7 @@ import numpy as np
 
 import sys
 
-from transformers import GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig
+from transformers import GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig, T5Config
 
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from transformers import OpenAIGPTLMHeadModel, OpenAIGPTTokenizer
@@ -18,6 +18,7 @@ from transformers import XLNetLMHeadModel, XLNetTokenizer
 from transformers import TransfoXLLMHeadModel, TransfoXLTokenizer
 from transformers import CTRLLMHeadModel, CTRLTokenizer
 from transformers import XLMWithLMHeadModel, XLMTokenizer
+from transformers import T5ForConditionalGeneration, T5Tokenizer
 
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -27,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 
-ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig)), ())
+# ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig)), ())
+ALL_MODELS = ["TODO: <solve version conflict> should be a list of usable pre-trained models"]  # TODO
 
 MODEL_CLASSES = {
     'gpt2': (GPT2LMHeadModel, GPT2Tokenizer),
@@ -36,6 +38,7 @@ MODEL_CLASSES = {
     'xlnet': (XLNetLMHeadModel, XLNetTokenizer),
     'transfo-xl': (TransfoXLLMHeadModel, TransfoXLTokenizer),
     'xlm': (XLMWithLMHeadModel, XLMTokenizer),
+    't5': (T5ForConditionalGeneration, T5Tokenizer)
 }
 
 # Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
@@ -92,14 +95,17 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
-                    is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
+                    is_t5=False, is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
     context = torch.tensor(context, dtype=torch.long, device=device)
     context = context.unsqueeze(0).repeat(num_samples, 1)
     generated = context
+
     with torch.no_grad():
         for _ in range(length):
-
             inputs = {'input_ids': generated}
+            if is_t5:
+                inputs['decoder_input_ids'] = generated
+
             if is_xlnet: 
                 # XLNet is a direct (predict same token, not next token) and bi-directional model by default
                 # => need one additional dummy token in the input (will be masked), attention mask and target mapping (see model docstring)
@@ -128,7 +134,7 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
                     next_token_logits[i, _] /= repetition_penalty
                 
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
-            if temperature == 0: # greedy sampling:
+            if temperature == 0:  # greedy sampling:
                 next_token = torch.argmax(filtered_logits, dim=-1).unsqueeze(-1)
             else:
                 next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
@@ -136,7 +142,7 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
     return generated
 
 
-def main():
+def init_gen_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_type", default=None, type=str, required=True,
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
@@ -159,43 +165,71 @@ def main():
                         help="random seed for initialization")
     parser.add_argument('--stop_token', type=str, default=None,
                         help="Token at which text generation is stopped")
-    
+
     parser.add_argument('--input_file', type=str, default=None,
                         help="file")
-    
+
     parser.add_argument('--output_file', type=str, default=None,
                         help="file")
 
     parser.add_argument('--nc', type=int, default=1,
                         help="number of sentence")
-    
+
     parser.add_argument("--use_token", action='store_true',
                         help="Avoid using CUDA when available")
-    
+
     # parser.add_argument('--use_token', type=int, default=1,
-                        # help="number of sentence")
+    # help="number of sentence")
 
-    args = parser.parse_args()
+    return parser
 
+
+def init_gen_config(parser):
+    command_line = """
+    --model_type=t5 \
+    --model_name_or_path=t5/no_task_pretrain \
+    --num_samples 5 \
+    --input_file=data/restaurant/test.txt \
+    --top_k 5 \
+    --output_file=t5/no_task_pretrain/results.json \
+    --length 80
+    """
+    args = parser.parse_args(command_line.split())
     args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     args.n_gpu = torch.cuda.device_count()
-
     set_seed(args)
+    return args
 
-    args.model_type = args.model_type.lower()
+
+def main():
+    parser = init_gen_arg_parser()
+    args = init_gen_config(parser)
+
+    ## Load the trained model
+    # args.model_type = args.model_type.lower()
     model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
     model = model_class.from_pretrained(args.model_name_or_path)
+    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
     model.to(args.device)
     model.eval()
 
-    if args.length < 0 and model.config.max_position_embeddings > 0:
-        args.length = model.config.max_position_embeddings
-    elif 0 < model.config.max_position_embeddings < args.length:
-        args.length = model.config.max_position_embeddings  # No generation bigger than model size 
-    elif args.length < 0:
-        args.length = MAX_LENGTH  # avoid infinite loop
+    # if args.length < 0 and model.config.max_position_embeddings > 0:
+    #     args.length = model.config.max_position_embeddings
+    # elif 0 < model.config.max_position_embeddings < args.length:
+    #     args.length = model.config.max_position_embeddings  # No generation bigger than model size
+    # elif args.length < 0:
+    #     args.length = MAX_LENGTH  # avoid infinite loop
 
+    # Cassie: modified for T5Config
+    if hasattr(model.config, 'max_position_embeddings'):
+        if args.length > 0:
+            args.length = min(args.length, model.config.max_position_embeddings)
+        else:
+            args.length = min(MAX_LENGTH,  model.config.max_position_embeddings)  # avoid infinite loop
+    else:
+        args.length = min(args.length, MAX_LENGTH)
+
+    ## log
     logger.info(args)
     if args.model_type in ["ctrl"]:
         if args.temperature > 0.7:
@@ -203,7 +237,8 @@ def main():
 
     fin = open(args.input_file)
     inputs = [i.strip() for i in fin]
-    output_tests = []
+
+    output_tests = []  # List(List(Str)): list of top generated examples
     for idx in range(0, len(inputs), 1):
         logger.info(f"PROGRESS: {int(idx/len(inputs)*100)}%")
         xlm_lang = None
@@ -232,7 +267,7 @@ def main():
             # Models with memory likes to have a long prompt for short inputs.
             raw_text = (args.padding_text if args.padding_text else PADDING_TEXT) + raw_text
         
-        context_tokens = tokenizer.encode(raw_text, add_special_tokens=False)
+        context_tokens = tokenizer.encode(raw_text, add_special_tokens=False)  # raw_text token IDs
 
         if args.model_type == "ctrl":
             if not any(context_tokens[0] == x for x in tokenizer.control_codes.values()):
@@ -246,11 +281,12 @@ def main():
             top_k=args.top_k,
             top_p=args.top_p,
             repetition_penalty=args.repetition_penalty,
+            is_t5=bool(args.model_type == 't5'),
             is_xlnet=bool(args.model_type == "xlnet"),
             is_xlm_mlm=is_xlm_mlm,
             xlm_mask_token=xlm_mask_token,
             xlm_lang=xlm_lang,
-            device=args.device,
+            device=args.device
         )
         out = out[:, len(context_tokens):].tolist()
         examples = []
@@ -264,7 +300,7 @@ def main():
         # if args.prompt:
             # break
     import json
-    json.dump(output_tests, open(args.output_file,'w'), indent=2)
+    json.dump(output_tests, open(args.output_file, 'w'), indent=2)
     return text
 
 
