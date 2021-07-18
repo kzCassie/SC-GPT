@@ -141,9 +141,11 @@ dmypy.json
 .idea/
 
 # pretrained models
+saved_models/
 scgpt.tar.gz
 scgpt/
 baseline/
 baseline*/
 cloudflared*
 t5/
+MultiWOZ*/

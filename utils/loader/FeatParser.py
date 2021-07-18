@@ -7,6 +7,8 @@ import sys
 import os
 import json
 file = open
+
+
 class DialogActParser(object):
 
     ## Assumption for the parser :

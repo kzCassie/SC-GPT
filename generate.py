@@ -142,46 +142,7 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
     return generated
 
 
-def init_gen_arg_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_type", default=None, type=str, required=True,
-                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
-    parser.add_argument("--model_name_or_path", default=None, type=str, required=True,
-                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--prompt", type=str, default="")
-    parser.add_argument("--padding_text", type=str, default="")
-    parser.add_argument("--xlm_lang", type=str, default="", help="Optional language when used with the XLM model.")
-    parser.add_argument("--length", type=int, default=40)
-    parser.add_argument("--num_samples", type=int, default=1)
-    parser.add_argument("--temperature", type=float, default=1.0,
-                        help="temperature of 0 implies greedy sampling")
-    parser.add_argument("--repetition_penalty", type=float, default=1.0,
-                        help="primarily useful for CTRL model; in that case, use 1.2")
-    parser.add_argument("--top_k", type=int, default=0)
-    parser.add_argument("--top_p", type=float, default=0.9)
-    parser.add_argument("--no_cuda", action='store_true',
-                        help="Avoid using CUDA when available")
-    parser.add_argument('--seed', type=int, default=42,
-                        help="random seed for initialization")
-    parser.add_argument('--stop_token', type=str, default=None,
-                        help="Token at which text generation is stopped")
 
-    parser.add_argument('--input_file', type=str, default=None,
-                        help="file")
-
-    parser.add_argument('--output_file', type=str, default=None,
-                        help="file")
-
-    parser.add_argument('--nc', type=int, default=1,
-                        help="number of sentence")
-
-    parser.add_argument("--use_token", action='store_true',
-                        help="Avoid using CUDA when available")
-
-    # parser.add_argument('--use_token', type=int, default=1,
-    # help="number of sentence")
-
-    return parser
 
 
 def init_gen_config(parser):
