@@ -2,25 +2,23 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-DOMAIN=taxi
-MODEL_SAVE_PATH=baseline_${DOMAIN}
-PRE_TRINED_MODEL_PATH=scgpt/
-#gpt2, gpt2-meidum
+DOMAIN=restaurant
+MODEL_SAVE_PATH=saved_models/t5-base
 EPOCH=5
 LR=5e-5
 
-python train.py \
+
+output_dir=${MODEL_SAVE_PATH}/${DOMAIN}
+python exp.py \
     --seed 42 \
-    --output_dir=${MODEL_SAVE_PATH} \
-    --model_type=gpt2 \
-    --model_name_or_path=${PRE_TRINED_MODEL_PATH} \
-    --do_train \
-    --do_eval \
-    --eval_data_file=data/${DOMAIN}/train.txt \
-    --per_gpu_train_batch_size 1 \
+    --mode train_with_eval \
+    --model_type t5 \
+    --model_name t5-base \
+    --output_dir ${output_dir} \
+    --train_data_file data/${DOMAIN}/train.txt \
+    --eval_data_file data/${DOMAIN}/train.txt \
     --num_train_epochs ${EPOCH} \
     --learning_rate ${LR} \
-    --overwrite_cache \
-    --use_tokenize \
-    --train_data_file=data/${DOMAIN}/train.txt \
-    --overwrite_output_dir
+    --use_tokenizer \
+    --overwrite_output_dir \
+    --overwrite_cache

@@ -1,8 +1,10 @@
 #!/bin/bash
 
-FIELD=taxi
-MODEL_SAVE_PATH=baseline_${FIELD}
+DOMAIN=restaurant
+MODEL_SAVE_PATH=saved_models/t5-base
 
+
+output_dir=${MODEL_SAVE_PATH}/${DOMAIN}
 python evaluator.py \
-    --domain ${FIELD} \
-    --target_file ${MODEL_SAVE_PATH}/results.json | tee ${MODEL_SAVE_PATH}/eval.txt
+    --domain ${DOMAIN} \
+    --target_file ${output_dir}/results.json | tee ${output_dir}/eval.txt

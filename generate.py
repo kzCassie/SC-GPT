@@ -1,45 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import argparse
-import logging
-from tqdm import trange
-
 import torch
 import torch.nn.functional as F
-import numpy as np
 
-import sys
+from common.utils import init_arg_parser, check_config, logger, set_seed
 
-from transformers import GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig, T5Config
-
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from transformers import OpenAIGPTLMHeadModel, OpenAIGPTTokenizer
-from transformers import XLNetLMHeadModel, XLNetTokenizer
-from transformers import TransfoXLLMHeadModel, TransfoXLTokenizer
-from transformers import CTRLLMHeadModel, CTRLTokenizer
-from transformers import XLMWithLMHeadModel, XLMTokenizer
-from transformers import T5ForConditionalGeneration, T5Tokenizer
-
-
-logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt = '%m/%d/%Y %H:%M:%S',
-                    level = logging.INFO)
-logger = logging.getLogger(__name__)
-
-MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
-
-# ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig)), ())
-ALL_MODELS = ["TODO: <solve version conflict> should be a list of usable pre-trained models"]  # TODO
-
-MODEL_CLASSES = {
-    'gpt2': (GPT2LMHeadModel, GPT2Tokenizer),
-    'ctrl': (CTRLLMHeadModel, CTRLTokenizer),
-    'openai-gpt': (OpenAIGPTLMHeadModel, OpenAIGPTTokenizer),
-    'xlnet': (XLNetLMHeadModel, XLNetTokenizer),
-    'transfo-xl': (TransfoXLLMHeadModel, TransfoXLTokenizer),
-    'xlm': (XLMWithLMHeadModel, XLMTokenizer),
-    't5': (T5ForConditionalGeneration, T5Tokenizer)
-}
 
 # Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
 # in https://github.com/rusiaaman/XLNet-gen#methodology
@@ -54,13 +19,7 @@ father initially slaps him for making such an accusation, Rasputin watches as th
 man is chased outside and beaten. Twenty years later, Rasputin sees a vision of
 the Virgin Mary, prompting him to become a priest. Rasputin quickly becomes famous,
 with people, even a bishop, begging for his blessing. <eod> </s> <eos>"""
-
-
-def set_seed(args):
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    if args.n_gpu > 0:
-        torch.cuda.manual_seed_all(args.seed)
+MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
@@ -103,8 +62,6 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
     with torch.no_grad():
         for _ in range(length):
             inputs = {'input_ids': generated}
-            if is_t5:
-                inputs['decoder_input_ids'] = generated
 
             if is_xlnet: 
                 # XLNet is a direct (predict same token, not next token) and bi-directional model by default
@@ -125,53 +82,27 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
             if xlm_lang is not None:
                 inputs["langs"] = torch.tensor([xlm_lang] * inputs["input_ids"].shape[1], device=device).view(1, -1)
 
-            outputs = model(**inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
-            next_token_logits = outputs[0][:, -1, :] / (temperature if temperature > 0 else 1.)
-
-            # repetition penalty from CTRL (https://arxiv.org/abs/1909.05858)
-            for i in range(num_samples):
-                for _ in set(generated[i].tolist()):
-                    next_token_logits[i, _] /= repetition_penalty
-                
-            filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
-            if temperature == 0:  # greedy sampling:
-                next_token = torch.argmax(filtered_logits, dim=-1).unsqueeze(-1)
+            if is_t5:
+                outputs = model.generate(**inputs)
             else:
-                next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
-            generated = torch.cat((generated, next_token), dim=1)
+                outputs = model(**inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+                next_token_logits = outputs[0][:, -1, :] / (temperature if temperature > 0 else 1.)
+
+                # repetition penalty from CTRL (https://arxiv.org/abs/1909.05858)
+                for i in range(num_samples):
+                    for _ in set(generated[i].tolist()):
+                        next_token_logits[i, _] /= repetition_penalty
+
+                filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
+                if temperature == 0:  # greedy sampling:
+                    next_token = torch.argmax(filtered_logits, dim=-1).unsqueeze(-1)
+                else:
+                    next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
+                generated = torch.cat((generated, next_token), dim=1)
     return generated
 
 
-
-
-
-def init_gen_config(parser):
-    command_line = """
-    --model_type=t5 \
-    --model_name_or_path=t5/no_task_pretrain \
-    --num_samples 5 \
-    --input_file=data/restaurant/test.txt \
-    --top_k 5 \
-    --output_file=t5/no_task_pretrain/results.json \
-    --length 80
-    """
-    args = parser.parse_args(command_line.split())
-    args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-    args.n_gpu = torch.cuda.device_count()
-    set_seed(args)
-    return args
-
-
-def main():
-    parser = init_gen_arg_parser()
-    args = init_gen_config(parser)
-
-    ## Load the trained model
-    # args.model_type = args.model_type.lower()
-    model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    model = model_class.from_pretrained(args.model_name_or_path)
-    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
-    model.to(args.device)
+def decode(args, model, tokenizer):
     model.eval()
 
     # if args.length < 0 and model.config.max_position_embeddings > 0:
@@ -196,7 +127,7 @@ def main():
         if args.temperature > 0.7:
             logger.info('CTRL typically works better with lower temperatures (and lower top_k).')
 
-    fin = open(args.input_file)
+    fin = open(args.decode_input_file)
     inputs = [i.strip() for i in fin]
 
     output_tests = []  # List(List(Str)): list of top generated examples
@@ -261,9 +192,22 @@ def main():
         # if args.prompt:
             # break
     import json
-    json.dump(output_tests, open(args.output_file, 'w'), indent=2)
+    json.dump(output_tests, open(args.decode_output_file, 'w'), indent=2)
     return text
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+    # command_line = """
+    #                 --no_cuda
+    #                 --mode decode
+    #                 --model_type=t5 \
+    #                 --model_path=saved_models/t5 \
+    #                 --num_samples 5 \
+    #                 --input_file=data/restaurant/test.txt \
+    #                 --top_k 5 \
+    #                 --output_file=saved_models/t5/results.json \
+    #                 --length 80
+    #                 """
+    # parser = init_arg_parser()
+    # args = parser.parse_args(command_line.split())
+

@@ -3,27 +3,16 @@
 export CUDA_VISIBLE_DEVICES=0
 
 DOMAIN=restaurant
-MODEL_SAVE_PATH=baseline_${DOMAIN}
+MODEL_SAVE_PATH=saved_models/t5-base
 
-#python generate.py \
-#    --model_type=gpt2 \
-#    --model_name_or_path=${MODEL_SAVE_PATH} \
-#    --num_samples 5 \
-#    --input_file=data/${DOMAIN}/test.txt \
-#    --top_k 5 \
-#    --output_file=${MODEL_SAVE_PATH}/results.json \
-#    --length 80
 
-# T5
-MODEL_TYPE=t5
-DOMAIN=restaurant
-MODEL_SAVE_PATH=t5/no_task_pretrain
-
-python generate.py \
-    --model_type=${MODEL_TYPE} \
-    --model_name_or_path=${MODEL_SAVE_PATH} \
-    --num_samples 1 \
-    --input_file=data/${DOMAIN}/test.txt \
+output_dir=${MODEL_SAVE_PATH}/${DOMAIN}
+python exp.py \
+    --mode decode \
+    --model_type t5 \
+    --model_path ${output_dir} \
+    --decode_input_file data/${DOMAIN}/test.txt \
+    --decode_output_file ${output_dir}/results.json \
+    --num_samples 5 \
     --top_k 5 \
-    --output_file=${MODEL_SAVE_PATH}/results.json \
     --length 80
