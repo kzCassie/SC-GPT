@@ -8,6 +8,7 @@ MODEL_SAVE_PATH=saved_models/t5-base
 
 output_dir=${MODEL_SAVE_PATH}/${DOMAIN}
 python exp.py \
+    --no_cuda \
     --mode decode \
     --model_type t5 \
     --model_path ${output_dir} \

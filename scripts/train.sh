@@ -4,7 +4,7 @@ export CUDA_VISIBLE_DEVICES=0
 
 DOMAIN=restaurant
 MODEL_SAVE_PATH=saved_models/t5-base
-EPOCH=5
+EPOCH=20
 LR=5e-5
 
 
@@ -13,7 +13,7 @@ python exp.py \
     --seed 42 \
     --mode train_with_eval \
     --model_type t5 \
-    --model_name t5-base \
+    --model_name t5-small \
     --output_dir ${output_dir} \
     --train_data_file data/${DOMAIN}/train.txt \
     --eval_data_file data/${DOMAIN}/train.txt \

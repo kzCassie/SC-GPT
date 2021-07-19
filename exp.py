@@ -187,7 +187,7 @@ def evaluate(args, model, tokenizer, prefix=""):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_output_dir = args.output_dir
 
-    eval_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+    eval_dataset = load_and_cache_examples(args, tokenizer, evaluate=True, enc_dec=args.enc_dec)
 
     if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(eval_output_dir)
@@ -292,5 +292,4 @@ if __name__ == '__main__':
 
     ## Decoding ##
     if args.mode == "decode":
-        print('decoding')
         decode(args, model, tokenizer)

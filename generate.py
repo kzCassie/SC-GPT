@@ -54,37 +54,42 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
-                    is_t5=False, is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
+                    is_t5=False, is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu',tokenizer=None):
     context = torch.tensor(context, dtype=torch.long, device=device)
     context = context.unsqueeze(0).repeat(num_samples, 1)
     generated = context
 
     with torch.no_grad():
-        for _ in range(length):
-            inputs = {'input_ids': generated}
+        if is_t5:
+            output = model.generate(context)
+            print(f"output shape={output.shape}")
+            generated = torch.cat((generated, output), dim=1)
+            print(f"generated shape={output.shape}")
+            print(tokenizer.decode(output[0]))
+        else:
+            # TODO: use transformer lib
+            for _ in range(length):
+                inputs = {'input_ids': generated}
 
-            if is_xlnet: 
-                # XLNet is a direct (predict same token, not next token) and bi-directional model by default
-                # => need one additional dummy token in the input (will be masked), attention mask and target mapping (see model docstring)
-                input_ids = torch.cat((generated, torch.zeros((1, 1), dtype=torch.long, device=device)), dim=1)
-                perm_mask = torch.zeros((1, input_ids.shape[1], input_ids.shape[1]), dtype=torch.float, device=device)
-                perm_mask[:, :, -1] = 1.0  # Previous tokens don't see last token
-                target_mapping = torch.zeros((1, 1, input_ids.shape[1]), dtype=torch.float, device=device)
-                target_mapping[0, 0, -1] = 1.0  # predict last token
-                inputs = {'input_ids': input_ids, 'perm_mask': perm_mask, 'target_mapping': target_mapping}
+                if is_xlnet:
+                    # XLNet is a direct (predict same token, not next token) and bi-directional model by default
+                    # => need one additional dummy token in the input (will be masked), attention mask and target mapping (see model docstring)
+                    input_ids = torch.cat((generated, torch.zeros((1, 1), dtype=torch.long, device=device)), dim=1)
+                    perm_mask = torch.zeros((1, input_ids.shape[1], input_ids.shape[1]), dtype=torch.float, device=device)
+                    perm_mask[:, :, -1] = 1.0  # Previous tokens don't see last token
+                    target_mapping = torch.zeros((1, 1, input_ids.shape[1]), dtype=torch.float, device=device)
+                    target_mapping[0, 0, -1] = 1.0  # predict last token
+                    inputs = {'input_ids': input_ids, 'perm_mask': perm_mask, 'target_mapping': target_mapping}
 
-            if is_xlm_mlm and xlm_mask_token:
-                # XLM MLM models are direct models (predict same token, not next token)
-                # => need one additional dummy token in the input (will be masked and guessed)
-                input_ids = torch.cat((generated, torch.full((1, 1), xlm_mask_token, dtype=torch.long, device=device)), dim=1)
-                inputs = {'input_ids': input_ids}
+                if is_xlm_mlm and xlm_mask_token:
+                    # XLM MLM models are direct models (predict same token, not next token)
+                    # => need one additional dummy token in the input (will be masked and guessed)
+                    input_ids = torch.cat((generated, torch.full((1, 1), xlm_mask_token, dtype=torch.long, device=device)), dim=1)
+                    inputs = {'input_ids': input_ids}
 
-            if xlm_lang is not None:
-                inputs["langs"] = torch.tensor([xlm_lang] * inputs["input_ids"].shape[1], device=device).view(1, -1)
+                if xlm_lang is not None:
+                    inputs["langs"] = torch.tensor([xlm_lang] * inputs["input_ids"].shape[1], device=device).view(1, -1)
 
-            if is_t5:
-                outputs = model.generate(**inputs)
-            else:
                 outputs = model(**inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
                 next_token_logits = outputs[0][:, -1, :] / (temperature if temperature > 0 else 1.)
 
@@ -99,6 +104,7 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
                 else:
                     next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
                 generated = torch.cat((generated, next_token), dim=1)
+
     return generated
 
 
@@ -158,7 +164,8 @@ def decode(args, model, tokenizer):
         if args.model_type in ["transfo-xl", "xlnet"]:
             # Models with memory likes to have a long prompt for short inputs.
             raw_text = (args.padding_text if args.padding_text else PADDING_TEXT) + raw_text
-        
+
+        print(raw_text)
         context_tokens = tokenizer.encode(raw_text, add_special_tokens=False)  # raw_text token IDs
 
         if args.model_type == "ctrl":
@@ -178,7 +185,8 @@ def decode(args, model, tokenizer):
             is_xlm_mlm=is_xlm_mlm,
             xlm_mask_token=xlm_mask_token,
             xlm_lang=xlm_lang,
-            device=args.device
+            device=args.device,
+            tokenizer=tokenizer
         )
         out = out[:, len(context_tokens):].tolist()
         examples = []
@@ -186,11 +194,13 @@ def decode(args, model, tokenizer):
             text = tokenizer.decode(o, clean_up_tokenization_spaces=True)
             text = text[: text.find(args.stop_token) if args.stop_token else None]
             examples.append(text)
+            print(text)
         
         output_tests.append(examples)
-        # break
+        break  # TODO
         # if args.prompt:
             # break
+
     import json
     json.dump(output_tests, open(args.decode_output_file, 'w'), indent=2)
     return text
